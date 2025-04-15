@@ -184,58 +184,59 @@ export default {
   },
     async fetchTotalLowStocks() {
       try {
-        // Use the dedicated endpoint for low stock totals
-        console.log('Fetching low stock counts from Inventory API');
-        const response = await axios.get(`${INVENTORY_API}/low-stock-total`);
+        // Update to fetch from the inventory products API that the low stock report uses
+        const response = await axios.get(`${INVENTORY_API}/inventoryproducts/filter?process_type=Ready-Made`);
         
-        // Use the out_of_stock_count for the main alert count
-        this.outOfStockCount = response.data.total_out_of_stock || 0;
-        
-        // Get the low stock count (items with low quantity but not zero)
-        const lowStockOnly = response.data.total_low_stock || 0;
-        
-        // For display purposes only (showing low stock separately from out of stock)
-        this.lowStockCount = lowStockOnly + this.outOfStockCount;
-        
-        console.log(`Low stock count: ${lowStockOnly}, Out of stock: ${this.outOfStockCount}, Total: ${this.lowStockCount}`);
-        
-        // Also fetch the actual low stock items for display
-        try {
-          const itemsResponse = await axios.get(`${REPORTS_API}/low_stock_report`);
+        if (response.data && Array.isArray(response.data)) {
+          // Count out of stock items (quantity <= 0)
+          this.outOfStockCount = response.data.filter(item => Number(item.Quantity) <= 0).length || 0;
           
-          if (itemsResponse.data.items && itemsResponse.data.items.length > 0) {
-            // Take 5 most critical items (out of stock first, then low stock)
-            const sortedItems = [...itemsResponse.data.items].sort((a, b) => {
-              const qtyA = Number(a.Quantity || 0);
-              const qtyB = Number(b.Quantity || 0);
-              
-              // First by status (out of stock first)
-              if (qtyA <= 0 && qtyB > 0) return -1;
-              if (qtyA > 0 && qtyB <= 0) return 1;
-              
-              // Then by quantity
-              return qtyA - qtyB;
-            });
+          // Count low stock items (quantity > 0 and <= 10)
+          const lowStockOnly = response.data.filter(item => Number(item.Quantity) > 0 && Number(item.Quantity) <= 10).length || 0;
+          
+          // Total alert count
+          this.lowStockCount = lowStockOnly + this.outOfStockCount;
+          
+          console.log(`Stock alerts loaded: ${this.lowStockCount} (${this.outOfStockCount} out, ${lowStockOnly} low)`);
+          
+          // Also fetch the actual low stock items for display
+          try {
+            // Filter the items from the response we already have
+            const outOfStockItems = response.data.filter(item => Number(item.Quantity) <= 0);
+            const lowStockItems = response.data.filter(item => Number(item.Quantity) > 0 && Number(item.Quantity) <= 10);
             
+            // Combine and sort - out of stock first, then low stock by quantity
+            const sortedItems = [...outOfStockItems, ...lowStockItems]
+              .sort((a, b) => Number(a.Quantity) - Number(b.Quantity));
+            
+            // Take the 5 most critical items
             this.lowStockItems = sortedItems.slice(0, 5).map(item => {
               const qty = Number(item.Quantity || 0);
-              const threshold = Number(item.Threshold || 10);
+              const threshold = 10; // Default threshold
               
               return {
-                id: item.ProductID || item.StockID,
-                name: item.ProductName || item.StockName,
+                id: item.ProductID || item.StockID || item.ID,
+                name: item.ProductName || item.StockName || item.Name,
                 quantity: qty,
                 threshold: threshold,
                 status: qty <= 0 ? 'Out of Stock' : qty <= threshold ? 'Low Stock' : 'In Stock'
               };
             });
+          } catch (error) {
+            console.error("Error processing low stock items:", error);
           }
-        } catch (error) {
-          console.error("Error fetching low stock items:", error);
+        } else {
+          // Initialize to 0 if no data is available
+          this.lowStockCount = 0;
+          this.outOfStockCount = 0;
+          this.lowStockItems = [];
         }
       } catch (error) {
-        console.error("Error fetching low stock counts:", error);
+        console.error("Error fetching low stock data:", error);
         this.toast.error("Failed to fetch low stock information");
+        this.lowStockCount = 0;
+        this.outOfStockCount = 0;
+        this.lowStockItems = [];
       }
     },
     async fetchActivityLogs() {
@@ -601,19 +602,25 @@ export default {
 
 .stock-counts {
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
+  gap: 10px;
   margin-top: 5px;
-  font-size: 12px;
-  padding-top: 5px;
+  font-size: 13px;
 }
 
 .out-count {
-  color: #d32f2f;
+  color: #f44336;
+  background: rgba(244, 67, 54, 0.1);
+  padding: 3px 8px;
+  border-radius: 12px;
   font-weight: 500;
 }
 
 .low-count {
-  color: #ff9800;
+  color: #FF9800;
+  background: rgba(255, 152, 0, 0.1);
+  padding: 3px 8px;
+  border-radius: 12px;
   font-weight: 500;
 }
 

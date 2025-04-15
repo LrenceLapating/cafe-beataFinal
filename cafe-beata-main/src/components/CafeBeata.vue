@@ -180,13 +180,13 @@
             <div class="team-member">
               <img :src="require('@/assets/sanji.png')" alt="Team Member 1">
               <h4>Leynard Librando</h4>
-              <p class="role">Member</p>
+              <p class="role">Programmer</p>
               <p class="description">Leading our team with passion and dedication.</p>
             </div>
             <div class="team-member">
               <img :src="require('@/assets/luffy.png')" alt="Team Member 2">
               <h4>Marc Laurence Lapating</h4>
-              <p class="role">Analys/Full Stack Programmer</p>
+              <p class="role">Analyst</p>
               <p class="description">Bringing technical expertise and innovation.</p>
             </div>
             <div class="team-member">

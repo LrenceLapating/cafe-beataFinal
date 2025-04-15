@@ -44,21 +44,21 @@
           <div class="summary-card total-sales">
             <div class="card-icon"><i class="pi pi-money-bill"></i></div>
             <div class="card-content">
-              <h3>Total Sales</h3>
+              <h3>Total Sales in Both System</h3>
               <p class="summary-value">{{ formatCurrency(calculateTotalSales()) }}</p>
             </div>
           </div>
           <div class="summary-card">
             <div class="card-icon"><i class="pi pi-shopping-cart"></i></div>
             <div class="card-content">
-              <h3>Total Orders</h3>
+              <h3>Total Orders Cafe Beata System</h3>
               <p class="summary-value">{{ totalOrders }}</p>
             </div>
           </div>
           <div class="summary-card">
             <div class="card-icon"><i class="pi pi-box"></i></div>
             <div class="card-content">
-              <h3>Total Items Sold</h3>
+              <h3>Total Items Sold in Both System</h3>
               <p class="summary-value">{{ combinedTotalItems }}</p>
             </div>
           </div>
@@ -111,7 +111,7 @@
 
         <!-- Combined Sales Table -->
         <div class="sales-section">
-          <h2>Combined Daily Sales</h2>
+          <h2>Consolidated Daily Sales Report</h2>
           <p class="last-updated">Last updated: {{ currentTime }}</p>
           <div class="table-container">
             <table class="sales-table">
@@ -167,18 +167,37 @@
                         <th>Order ID</th>
                         <th>Time</th>
                         <th>Customer</th>
-                        <th>Items</th>
-                        <th>Total</th>
+                        <th>Item</th>
+                        <th>Quantity</th>
+                        <th>Unit Price</th>
+                        <th>Item Total</th>
+                        <th>Order Total</th>
                       </tr>
                     </thead>
                     <tbody>
-                      <tr v-for="order in cafeOrders" :key="order.id">
-                        <td><span class="order-id">{{ order.id }}</span></td>
-                        <td>{{ formatTime(order.created_at) }}</td>
-                        <td>{{ order.customer_name }}</td>
-                        <td>{{ formatItemsList(order.items) }}</td>
-                        <td>{{ formatCurrency(calculateOrderTotal(order.items)) }}</td>
-                      </tr>
+                      <template v-for="order in cafeOrders" :key="order.id">
+                        <template v-if="order.items && order.items.length > 0">
+                          <tr v-for="(item, itemIndex) in order.items" :key="`${order.id}-item-${itemIndex}`" 
+                              :class="{'first-item': itemIndex === 0, 'order-row': true}">
+                            <td v-if="itemIndex === 0" class="order-cell" :rowspan="order.items.length">
+                              <span class="order-id">{{ order.id }}</span>
+                            </td>
+                            <td v-if="itemIndex === 0" class="order-cell" :rowspan="order.items.length">
+                              {{ formatTime(order.created_at) }}
+                            </td>
+                            <td v-if="itemIndex === 0" class="order-cell" :rowspan="order.items.length">
+                              {{ order.customer_name }}
+                            </td>
+                            <td>{{ item.name }}</td>
+                            <td class="text-center">{{ item.quantity }}</td>
+                            <td>{{ formatCurrency(item.price) }}</td>
+                            <td>{{ formatCurrency(item.price * item.quantity) }}</td>
+                            <td v-if="itemIndex === 0" class="order-cell" :rowspan="order.items.length">
+                              {{ formatCurrency(calculateOrderTotal(order.items)) }}
+                            </td>
+                          </tr>
+                        </template>
+                      </template>
                     </tbody>
                   </table>
                 </div>
@@ -211,7 +230,7 @@
                       </tr>
                     </thead>
                     <tbody>
-                      <tr v-for="(item, index) in inventorySales" :key="index">
+                      <tr v-for="(item, index) in filteredInventorySales" :key="index">
                         <td><span class="product-name">{{ item.name }}</span></td>
                         <td class="text-center">{{ item.items_sold }}</td>
                         <td>{{ formatCurrency(item.unit_price) }}</td>
@@ -302,9 +321,11 @@ export default {
       });
     },
     combinedTotalSales() {
+      // Include both Cafe sales and non-duplicated Inventory sales
       return this.totalCafeSales + this.totalInventorySales;
     },
     combinedTotalItems() {
+      // Include both Cafe items and non-duplicated Inventory items
       return this.totalCafeItems + this.totalInventoryItems;
     },
     totalOrders() {
@@ -313,6 +334,9 @@ export default {
     combinedSalesList() {
       // Convert cafe orders directly to display items
       const cafeItems = [];
+      
+      // Create a set of product names from cafe orders to track what's already been counted
+      const cafeProductNames = new Set();
       
       // Process all cafe orders (already sorted newest first)
       this.cafeOrders.forEach(order => {
@@ -329,23 +353,29 @@ export default {
               orderId: order.id, // Add order ID for debugging
               orderTime: this.formatTime(order.created_at) // Formatted time for debugging
             });
+            
+            // Track this product name to avoid duplication
+            cafeProductNames.add(item.name);
           });
         }
       });
       
-      // Prepare inventory items with timestamps
-      const inventoryItems = this.inventorySales.map(item => ({
-        name: item.name,
-        quantity: item.items_sold,
-        price: item.unit_price,
-        total: item.remitted,
-        source: 'Inventory',
-        timestamp: item.created_at ? new Date(item.created_at).getTime() : new Date(this.selectedDate).getTime(),
-        payment_method: item.payment_method || 'Cash' // Include payment method
-      }));
+      // Only include inventory items that don't duplicate cafe items
+      // (Ready-Made products will already be in cafe orders)
+      const filteredInventoryItems = this.inventorySales
+        .filter(item => !cafeProductNames.has(item.name))
+        .map(item => ({
+          name: item.name,
+          quantity: item.items_sold,
+          price: item.unit_price,
+          total: item.remitted,
+          source: 'Inventory',
+          timestamp: item.created_at ? new Date(item.created_at).getTime() : new Date(this.selectedDate).getTime(),
+          payment_method: item.payment_method || 'Cash' // Include payment method
+        }));
       
-      // Combine all items
-      const combined = [...cafeItems, ...inventoryItems];
+      // Combine the filtered items
+      const combined = [...cafeItems, ...filteredInventoryItems];
       
       // Sort strictly by timestamp, newest first
       combined.sort((a, b) => b.timestamp - a.timestamp);
@@ -358,6 +388,20 @@ export default {
       );
       
       return combined;
+    },
+    filteredInventorySales() {
+      // Create a set of product names from cafe orders
+      const cafeProductNames = new Set();
+      this.cafeOrders.forEach(order => {
+        if (order.items && Array.isArray(order.items)) {
+          order.items.forEach(item => {
+            cafeProductNames.add(item.name);
+          });
+        }
+      });
+      
+      // Return only inventory sales that don't have matching names in cafe orders
+      return this.inventorySales.filter(item => !cafeProductNames.has(item.name));
     }
   },
   methods: {
@@ -543,16 +587,30 @@ export default {
         return total;
       }, 0);
       
-      // Calculate totals for inventory system
-      this.totalInventorySales = this.inventorySales.reduce((total, item) => {
+      // Calculate totals for inventory system - but don't include items that exist in cafe orders
+      // Create a set of product names from cafe orders
+      const cafeProductNames = new Set();
+      this.cafeOrders.forEach(order => {
+        if (order.items && Array.isArray(order.items)) {
+          order.items.forEach(item => {
+            cafeProductNames.add(item.name);
+          });
+        }
+      });
+      
+      // Filter inventory sales to exclude items already in cafe orders
+      const filteredInventorySales = this.inventorySales.filter(item => !cafeProductNames.has(item.name));
+      
+      // Calculate totals only for non-duplicate inventory items
+      this.totalInventorySales = filteredInventorySales.reduce((total, item) => {
         return total + item.remitted;
       }, 0);
       
-      this.totalInventoryItems = this.inventorySales.reduce((count, item) => {
+      this.totalInventoryItems = filteredInventorySales.reduce((count, item) => {
         return count + item.items_sold;
       }, 0);
       
-      console.log(`Summary - Cafe: ₱${this.totalCafeSales.toFixed(2)} (${this.totalCafeItems} items), Inventory: ₱${this.totalInventorySales.toFixed(2)} (${this.totalInventoryItems} items)`);
+      console.log(`Summary - Cafe: ₱${this.totalCafeSales.toFixed(2)} (${this.totalCafeItems} items), Inventory (non-duplicate): ₱${this.totalInventorySales.toFixed(2)} (${this.totalInventoryItems} items)`);
     },
     
     calculateTotalSales() {
@@ -661,11 +719,10 @@ export default {
     },
     
     exportToCsv() {
-      // Prepare the data to be exported
       const csvData = [];
       
-      // Add header row
-      csvData.push(['Daily Sales Report - ' + this.formattedDate]);
+      // Add report title and date
+      csvData.push([`Daily Sales Report - ${this.formattedDate}`]);
       csvData.push(['']);
       
       // Add summary section
@@ -677,15 +734,16 @@ export default {
       
       // Add system breakdown
       csvData.push(['System Breakdown']);
-      csvData.push(['Cafe System - Sales', this.formatCurrency(this.totalCafeSales)]);
-      csvData.push(['Cafe System - Items Sold', this.totalCafeItems]);
-      csvData.push(['Cafe System - Orders', this.cafeOrders.length]);
+      csvData.push(['Cafe Beata System - Sales', this.formatCurrency(this.totalCafeSales)]);
+      csvData.push(['Cafe Beata System - Orders', this.cafeOrders.length]);
+      csvData.push(['Cafe Beata System - Items Sold', this.totalCafeItems]);
+      csvData.push(['']);
       csvData.push(['Inventory System - Sales', this.formatCurrency(this.totalInventorySales)]);
       csvData.push(['Inventory System - Items Sold', this.totalInventoryItems]);
       csvData.push(['']);
       
       // Add combined sales table header
-      csvData.push(['Combined Sales Details (Most Recent First)']);
+      csvData.push(['Sales Details (By Item)']);
       csvData.push(['Product', 'Quantity Sold', 'Unit Price', 'Total', 'Source']);
       
       // Add combined sales items in timestamp order (most recent first)
@@ -703,16 +761,43 @@ export default {
       
       // Add cafe orders detail
       csvData.push(['Cafe Orders Detail']);
-      csvData.push(['Order ID', 'Time', 'Customer', 'Items', 'Total']);
+      csvData.push(['Order ID', 'Time', 'Customer', 'Item', 'Quantity', 'Unit Price', 'Item Total', 'Order Total']);
       
       this.cafeOrders.forEach(order => {
-        csvData.push([
-          order.id,
-          this.formatTime(order.created_at),
-          order.customer_name,
-          this.formatItemsList(order.items),
-          this.formatCurrency(this.calculateOrderTotal(order.items))
-        ]);
+        if (order.items && order.items.length > 0) {
+          const orderTotal = this.calculateOrderTotal(order.items);
+          
+          // Add each item in the order as a separate row
+          order.items.forEach((item, index) => {
+            const itemTotal = item.price * item.quantity;
+            
+            if (index === 0) {
+              // First item includes the order information
+              csvData.push([
+                order.id,
+                this.formatTime(order.created_at),
+                order.customer_name,
+                item.name,
+                item.quantity,
+                this.formatCurrency(item.price),
+                this.formatCurrency(itemTotal),
+                this.formatCurrency(orderTotal)
+              ]);
+            } else {
+              // Subsequent items just include the item details
+              csvData.push([
+                '', // Order ID
+                '', // Time
+                '', // Customer
+                item.name,
+                item.quantity,
+                this.formatCurrency(item.price),
+                this.formatCurrency(itemTotal),
+                '' // Order Total
+              ]);
+            }
+          });
+        }
       });
       
       // Convert the array to CSV string
@@ -1550,5 +1635,28 @@ export default {
 .payment-badge.tally {
   background-color: #FFF3E0;
   color: #F57C00;
+}
+
+/* Order Detail Table Styles */
+.order-row {
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.order-row.first-item {
+  border-top: 2px solid #f0f0f0;
+}
+
+.order-cell {
+  background-color: #fcfcfc;
+  vertical-align: middle;
+  border-right: 1px solid #f5f5f5;
+}
+
+.order-id {
+  font-weight: bold;
+  color: #E54F70;
+  padding: 2px 5px;
+  border-radius: 3px;
+  background-color: rgba(229, 79, 112, 0.1);
 }
 </style> 

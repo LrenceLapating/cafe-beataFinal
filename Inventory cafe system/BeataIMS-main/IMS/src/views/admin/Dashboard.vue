@@ -120,7 +120,7 @@
   import sidebar from '@/components/admin/sidebar.vue';
   import Header from '@/components/Header.vue';
   import axios from 'axios';
-import { SALES_API, API_URL, ORDERS_API, INVENTORY_API, USERS_API } from '@/api/config.js';
+import { SALES_API, API_URL, ORDERS_API, INVENTORY_API, USERS_API, ORDER_SUMMARY_API } from '@/api/config.js';
 import { useToast } from 'vue-toastification';
 import { nextTick } from 'vue';
 import Chart from 'chart.js/auto';
@@ -227,30 +227,14 @@ import Chart from 'chart.js/auto';
       this.isLoading = true;
       
       try {
-        // Check if we can access the API server first
-        let canAccessAPI = false;
-        try {
-          // Try a simple OPTIONS request to check if the API is available
-          await axios.options(`${API_URL}/health-check`, { timeout: 2000 });
-          canAccessAPI = true;
-        } catch (error) {
-          console.log('API server not accessible, using fallback data');
-          canAccessAPI = false;
-        }
-        
-        if (canAccessAPI) {
-          // Only fetch from API if it's accessible
-          await Promise.all([
-            this.fetchTodaySales(),
-            this.fetchOrders(),
-            this.fetchTotalProducts(),
-            this.fetchStockAlerts(),
-            this.fetchTopProducts()
-          ]);
-        } else {
-          // Use fallback data if API is not accessible
-          this.useFallbackData();
-        }
+        // Always try to fetch real data from API
+        await Promise.all([
+          this.fetchTodaySales(),
+          this.fetchOrders(),
+          this.fetchTotalProducts(),
+          this.fetchStockAlerts(),
+          this.fetchTopProducts()
+        ]);
         
         // Generate prediction data and render chart after other data is loaded
         this.generatePredictionData();
@@ -260,172 +244,130 @@ import Chart from 'chart.js/auto';
       } catch (error) {
         console.error('Error loading dashboard data:', error);
         this.toast.error('Error loading dashboard data');
-        
-        // Ensure fallback data is used if API calls fail
-        this.useFallbackData();
-        this.generatePredictionData();
-        this.renderPredictionChart();
       } finally {
         this.isLoading = false;
       }
     },
     
-    // Use fallback data for all dashboard elements
-    useFallbackData() {
-      console.log('Using fallback data for dashboard');
-      
-      // Today's Sales
-      this.todaySales = 2459;
-      this.salesChangePercent = '+15.3';
-      
-      // Total Orders
-      this.totalOrders = 147;
-      this.ordersChangePercent = '+8.2';
-      
-      // Total Products
-      this.totalProducts = 94;
-      this.productsChangePercent = '+12.4';
-      
-      // Stock Alerts
-      this.lowStockCount = 5;
-      this.outOfStockCount = 2;
-      
-      // Use the same demo top products as in other methods
-      this.useDemoTopProducts();
-    },
-    
     // Fetch today's sales data
     async fetchTodaySales() {
       try {
-        // Instead of making API calls that might fail, check if we have top products data
-        // and use that as an indicator that real data can be fetched
-        if (this.topProducts && this.topProducts.length > 0) {
-          // Only try API call if we already have some data
-          const today = new Date().toISOString().split('T')[0];
-          const response = await axios.get(`${ORDERS_API}/daily-summary?date=${today}`, {
-            timeout: 3000 // Add timeout to prevent long hanging requests
-          });
+        // Use the total-sales-revenue endpoint to get actual sales data
+        const response = await axios.get(`${SALES_API}/total-sales-revenue`);
+        
+        if (response.data && response.data.total_sales_revenue !== undefined) {
+          this.todaySales = parseFloat(response.data.total_sales_revenue);
+          this.salesChangePercent = '+0.0'; // Initialize to 0 as we don't have previous day comparison yet
           
-          if (response.data && response.data.total !== undefined) {
-            this.todaySales = response.data.total;
-            console.log(`Today's sales loaded from daily summary: ${this.todaySales}`);
+          console.log(`Today's sales loaded: ${this.todaySales}`);
+          
+          // Try to fetch yesterday's data to calculate the percentage change
+          try {
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            const yesterdayStr = yesterday.toISOString().split('T')[0];
             
-            // Calculate change percentage from yesterday
-            if (response.data.previous_day && response.data.previous_day.total !== undefined) {
-              const previousTotal = response.data.previous_day.total || 0;
-              if (previousTotal > 0) {
-                this.salesChangePercent = (((this.todaySales - previousTotal) / previousTotal) * 100).toFixed(1);
-              } else if (this.todaySales > 0) {
-                this.salesChangePercent = '+100.0';
-              } else {
-                this.salesChangePercent = '0.0';
-              }
-            } else {
-              this.salesChangePercent = '+0.0';
-            }
-          } else {
-            // If the response format is unexpected, just use fallback
-            throw new Error('Invalid response format');
+            // This is an approximation - the API doesn't provide previous day data directly
+            // We could fetch yesterday's data in a future implementation
+            
+            // If we can't calculate a real percentage, we'll just use +0.0
+          } catch (error) {
+            console.log("Couldn't calculate percentage change, using default");
           }
         } else {
-          // Use fallback data
-          this.todaySales = 2459;
-          this.salesChangePercent = '+15.3';
+          // If the endpoint doesn't return the expected format, initialize to 0
+          this.todaySales = 0;
+          this.salesChangePercent = '+0.0';
         }
       } catch (error) {
-        // Don't log the full error, just use fallback data quietly
-        this.todaySales = 2459;
-        this.salesChangePercent = '+15.3';
+        console.error('Error fetching today\'s sales:', error);
+        // Initialize to 0 instead of using dummy data
+        this.todaySales = 0;
+        this.salesChangePercent = '+0.0';
       }
     },
     
     // Fetch orders data - only for today
     async fetchOrders() {
       try {
-        // Skip API call if we're in fallback mode
-        if (this.topProducts && this.topProducts.length > 0) {
-          // Get today's date range
-          const startOfDay = new Date();
-          startOfDay.setHours(0, 0, 0, 0);
-          
-          const endOfDay = new Date();
-          endOfDay.setHours(23, 59, 59, 999);
-          
-          // Format for API query
-          const startTime = startOfDay.toISOString();
-          const endTime = endOfDay.toISOString();
-          
-          // Try the count endpoint with today's date filter
-          const response = await axios.get(`${ORDERS_API}/count?start_date=${startTime}&end_date=${endTime}`, {
-            timeout: 3000
+        // Use the orders history endpoint to get actual order count
+        const response = await axios.get(`${ORDER_SUMMARY_API}/orders/history`);
+        
+        if (response.data && Array.isArray(response.data)) {
+          // Count only today's orders
+          const today = new Date().toISOString().split('T')[0];
+          const todaysOrders = response.data.filter(order => {
+            const orderDate = new Date(order.created_at).toISOString().split('T')[0];
+            return orderDate === today;
           });
           
-          if (response.data && response.data.total !== undefined) {
-            this.totalOrders = response.data.total;
-            this.ordersChangePercent = '+8.2'; // Use fixed value for simplicity
-          } else {
-            // Use fallback
-            throw new Error('Invalid response format');
-          }
+          this.totalOrders = todaysOrders.length;
+          this.ordersChangePercent = '+0.0'; // Default since we don't have historical comparison
+          
+          console.log(`Today's orders loaded: ${this.totalOrders}`);
         } else {
-          // Use fallback data
-          this.totalOrders = 147;
-          this.ordersChangePercent = '+8.2';
+          // Initialize to 0 if no data is available
+          this.totalOrders = 0;
+          this.ordersChangePercent = '+0.0';
         }
       } catch (error) {
-        // Silently use fallback data
-        this.totalOrders = 147;
-        this.ordersChangePercent = '+8.2';
+        console.error('Error fetching orders:', error);
+        // Initialize to 0 instead of using dummy data
+        this.totalOrders = 0;
+        this.ordersChangePercent = '+0.0';
       }
     },
     
     // Fetch total products
     async fetchTotalProducts() {
       try {
-        const response = await axios.get(`${INVENTORY_API}/total-products`, {
-          timeout: 3000
-        });
+        const response = await axios.get(`${INVENTORY_API}/total-products`);
         
         if (response.data && response.data.total_products !== undefined) {
           this.totalProducts = response.data.total_products;
-          this.productsChangePercent = '0.0';
+          this.productsChangePercent = '+0.0'; // Default since we don't track changes
+          
+          console.log(`Total products loaded: ${this.totalProducts}`);
         } else {
-          // Use fallback
-          this.totalProducts = 94;
-          this.productsChangePercent = '0.0';
+          // Initialize to 0 if no data is available
+          this.totalProducts = 0;
+          this.productsChangePercent = '+0.0';
         }
       } catch (error) {
-        // Silently use fallback
-        this.totalProducts = 94;
-        this.productsChangePercent = '0.0';
+        console.error('Error fetching total products:', error);
+        // Initialize to 0 instead of using dummy data
+        this.totalProducts = 0;
+        this.productsChangePercent = '+0.0';
       }
     },
     
     // Fetch stock alerts (low stock and out of stock)
     async fetchStockAlerts() {
       try {
-        const response = await axios.get(`${INVENTORY_API}/low-stock-total`, {
-          timeout: 3000
-        });
+        // Update to fetch from the inventory products API that the low stock report uses
+        const response = await axios.get(`${INVENTORY_API}/inventoryproducts/filter?process_type=Ready-Made`);
         
-        if (response.data) {
-          // Out of stock count
-          this.outOfStockCount = response.data.total_out_of_stock || 2;
+        if (response.data && Array.isArray(response.data)) {
+          // Count out of stock items (quantity <= 0)
+          this.outOfStockCount = response.data.filter(item => Number(item.Quantity) <= 0).length || 0;
           
-          // Low stock count (items with low quantity but not zero)
-          const lowStockOnly = response.data.total_low_stock || 4;
+          // Count low stock items (quantity > 0 and <= 10)
+          const lowStockOnly = response.data.filter(item => Number(item.Quantity) > 0 && Number(item.Quantity) <= 10).length || 0;
           
           // Total alert count (both low and out of stock)
           this.lowStockCount = lowStockOnly + this.outOfStockCount;
+          
+          console.log(`Stock alerts loaded: ${this.lowStockCount} (${this.outOfStockCount} out, ${lowStockOnly} low)`);
         } else {
-          // Use fallback
-          this.lowStockCount = 6;
-          this.outOfStockCount = 2;
+          // Initialize to 0 if no data is available
+          this.lowStockCount = 0;
+          this.outOfStockCount = 0;
         }
       } catch (error) {
-        // Silently use fallback
-        this.lowStockCount = 6;
-        this.outOfStockCount = 2;
+        console.error('Error fetching stock alerts:', error);
+        // Initialize to 0 instead of using dummy data
+        this.lowStockCount = 0;
+        this.outOfStockCount = 0;
       }
     },
     
@@ -436,6 +378,16 @@ import Chart from 'chart.js/auto';
         const currentMonth = new Date().getMonth(); // 0-11
         const currentYear = new Date().getFullYear();
         
+        // Try to get data from the sales API for top products
+        const response = await axios.get(`${SALES_API}/top-products?month=${currentMonth + 1}&year=${currentYear}&limit=5`);
+        
+        if (response.data && Array.isArray(response.data) && response.data.length > 0) {
+          console.log(`Got ${response.data.length} top products from API`);
+          this.topProducts = response.data;
+          return;
+        }
+        
+        // If we don't get data from API, try getting from orders
         try {
           // Try to get all completed orders for data processing
           const ordersResponse = await axios.get(`http://localhost:8000/orders?status=completed`, {
