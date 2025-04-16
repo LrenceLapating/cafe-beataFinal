@@ -252,11 +252,11 @@ import Chart from 'chart.js/auto';
     // Fetch today's sales data
     async fetchTodaySales() {
       try {
-        // 1. Fetch inventory system sales data
-        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+        // 1. Fetch inventory system sales data - use proper date format
+        const today = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD format for consistent date handling
         const inventoryResponse = await axios.get(`${SALES_API}/sales/daily?date=${today}`);
         
-        // Calculate inventory sales (only include items that were actually sold)
+        // Only include items that were actually sold (items_sold > 0)
         const inventorySales = (inventoryResponse.data || [])
           .filter(item => item.items_sold > 0)
           .reduce((total, item) => total + item.remitted, 0);
@@ -264,14 +264,15 @@ import Chart from 'chart.js/auto';
         // 2. Fetch cafe system orders
         const cafeResponse = await axios.get(`http://127.0.0.1:8000/orders?status=completed`);
         
-        // Filter cafe orders for today
+        // Filter cafe orders for today - use the same date comparison technique as in DailySalesReport.vue
         const todayDate = new Date();
+        const todayStr = todayDate.toLocaleDateString('en-CA'); // YYYY-MM-DD format
+        
         const cafeOrders = cafeResponse.data && cafeResponse.data.orders 
           ? cafeResponse.data.orders.filter(order => {
               const orderDate = new Date(order.created_at);
-              return orderDate.getFullYear() === todayDate.getFullYear() &&
-                     orderDate.getMonth() === todayDate.getMonth() &&
-                     orderDate.getDate() === todayDate.getDate();
+              const orderDateStr = orderDate.toLocaleDateString('en-CA');
+              return orderDateStr === todayStr; // Compare date strings for accurate day comparison
             })
           : [];
         
