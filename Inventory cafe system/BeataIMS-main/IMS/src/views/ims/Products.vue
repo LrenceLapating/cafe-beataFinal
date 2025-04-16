@@ -191,7 +191,7 @@ export default {
         this.productItems = response.data.map(product => ({
           ...product,
           Status: product.Status || 'Unknown',
-          ProductID: product.ProductID || 'N/A'
+          ProductID: product.id ? String(product.id).padStart(4, '0') : (product.ProductID || 'N/A')
         }));
 
         this.filterItems();

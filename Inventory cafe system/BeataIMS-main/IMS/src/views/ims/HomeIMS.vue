@@ -166,11 +166,62 @@ export default {
     },
     async fetchTotalRevenue() {
       try {
-        const response = await axios.get(`${SALES_API}/total-sales-revenue`);
-        this.totalRevenue = parseFloat(response.data.total_sales_revenue); // Correct field from backend
-        this.animatedTotalRevenue = this.totalRevenue; // Directly set the total revenue
+        // 1. Fetch inventory system sales data
+        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+        const inventoryResponse = await axios.get(`${SALES_API}/sales/daily?date=${today}`);
+        
+        // Calculate inventory sales (only include items that were actually sold)
+        const inventorySales = (inventoryResponse.data || [])
+          .filter(item => item.items_sold > 0)
+          .reduce((total, item) => total + item.remitted, 0);
+        
+        // 2. Fetch cafe system orders
+        const cafeResponse = await axios.get(`http://127.0.0.1:8000/orders?status=completed`);
+        
+        // Filter cafe orders for today
+        const todayDate = new Date();
+        const cafeOrders = cafeResponse.data && cafeResponse.data.orders 
+          ? cafeResponse.data.orders.filter(order => {
+              const orderDate = new Date(order.created_at);
+              return orderDate.getFullYear() === todayDate.getFullYear() &&
+                     orderDate.getMonth() === todayDate.getMonth() &&
+                     orderDate.getDate() === todayDate.getDate();
+            })
+          : [];
+        
+        // Calculate cafe sales total
+        const cafeSales = cafeOrders.reduce((total, order) => {
+          if (order.items && Array.isArray(order.items)) {
+            return total + order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+          }
+          return total;
+        }, 0);
+        
+        // 3. Get unique product names from cafe orders to avoid double counting
+        const cafeProductNames = new Set();
+        cafeOrders.forEach(order => {
+          if (order.items && Array.isArray(order.items)) {
+            order.items.forEach(item => cafeProductNames.add(item.name));
+          }
+        });
+        
+        // 4. Adjust inventory sales to exclude items already counted in cafe orders
+        const adjustedInventorySales = (inventoryResponse.data || [])
+          .filter(item => item.items_sold > 0 && !cafeProductNames.has(item.name))
+          .reduce((total, item) => total + item.remitted, 0);
+        
+        // Combined total (using adjusted inventory sales to avoid double counting)
+        this.totalRevenue = cafeSales + adjustedInventorySales;
+        
+        console.log(`Total Revenue: ₱${this.totalRevenue.toFixed(2)} (Cafe: ₱${cafeSales.toFixed(2)}, Inventory: ₱${adjustedInventorySales.toFixed(2)})`);
+        
+        // Start animation for smoother transition
+        this.animatedTotalRevenue = 0;
+        this.animateValue('animatedTotalRevenue', this.totalRevenue);
       } catch (error) {
         console.error("Error fetching total revenue:", error);
+        this.totalRevenue = 0;
+        this.animatedTotalRevenue = 0;
       }
     },
 

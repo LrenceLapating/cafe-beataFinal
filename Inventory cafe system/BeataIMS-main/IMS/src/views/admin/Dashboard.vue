@@ -252,33 +252,55 @@ import Chart from 'chart.js/auto';
     // Fetch today's sales data
     async fetchTodaySales() {
       try {
-        // Use the total-sales-revenue endpoint to get actual sales data
-        const response = await axios.get(`${SALES_API}/total-sales-revenue`);
+        // 1. Fetch inventory system sales data
+        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+        const inventoryResponse = await axios.get(`${SALES_API}/sales/daily?date=${today}`);
         
-        if (response.data && response.data.total_sales_revenue !== undefined) {
-          this.todaySales = parseFloat(response.data.total_sales_revenue);
-          this.salesChangePercent = '+0.0'; // Initialize to 0 as we don't have previous day comparison yet
-          
-          console.log(`Today's sales loaded: ${this.todaySales}`);
-          
-          // Try to fetch yesterday's data to calculate the percentage change
-          try {
-            const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() - 1);
-            const yesterdayStr = yesterday.toISOString().split('T')[0];
-            
-            // This is an approximation - the API doesn't provide previous day data directly
-            // We could fetch yesterday's data in a future implementation
-            
-            // If we can't calculate a real percentage, we'll just use +0.0
-          } catch (error) {
-            console.log("Couldn't calculate percentage change, using default");
+        // Calculate inventory sales (only include items that were actually sold)
+        const inventorySales = (inventoryResponse.data || [])
+          .filter(item => item.items_sold > 0)
+          .reduce((total, item) => total + item.remitted, 0);
+        
+        // 2. Fetch cafe system orders
+        const cafeResponse = await axios.get(`http://127.0.0.1:8000/orders?status=completed`);
+        
+        // Filter cafe orders for today
+        const todayDate = new Date();
+        const cafeOrders = cafeResponse.data && cafeResponse.data.orders 
+          ? cafeResponse.data.orders.filter(order => {
+              const orderDate = new Date(order.created_at);
+              return orderDate.getFullYear() === todayDate.getFullYear() &&
+                     orderDate.getMonth() === todayDate.getMonth() &&
+                     orderDate.getDate() === todayDate.getDate();
+            })
+          : [];
+        
+        // Calculate cafe sales total
+        const cafeSales = cafeOrders.reduce((total, order) => {
+          if (order.items && Array.isArray(order.items)) {
+            return total + order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
           }
-        } else {
-          // If the endpoint doesn't return the expected format, initialize to 0
-          this.todaySales = 0;
-          this.salesChangePercent = '+0.0';
-        }
+          return total;
+        }, 0);
+        
+        // 3. Get unique product names from cafe orders to avoid double counting
+        const cafeProductNames = new Set();
+        cafeOrders.forEach(order => {
+          if (order.items && Array.isArray(order.items)) {
+            order.items.forEach(item => cafeProductNames.add(item.name));
+          }
+        });
+        
+        // 4. Adjust inventory sales to exclude items already counted in cafe orders
+        const adjustedInventorySales = (inventoryResponse.data || [])
+          .filter(item => item.items_sold > 0 && !cafeProductNames.has(item.name))
+          .reduce((total, item) => total + item.remitted, 0);
+        
+        // Combined total (using adjusted inventory sales to avoid double counting)
+        this.todaySales = cafeSales + adjustedInventorySales;
+        this.salesChangePercent = '+0.0'; // Initialize to 0 as we don't have previous day comparison yet
+        
+        console.log(`Today's sales: ₱${this.todaySales.toFixed(2)} (Cafe: ₱${cafeSales.toFixed(2)}, Inventory: ₱${adjustedInventorySales.toFixed(2)})`);
       } catch (error) {
         console.error('Error fetching today\'s sales:', error);
         // Initialize to 0 instead of using dummy data
@@ -290,29 +312,12 @@ import Chart from 'chart.js/auto';
     // Fetch orders data - only for today
     async fetchOrders() {
       try {
-        // Use the orders history endpoint to get actual order count
         const response = await axios.get(`${ORDER_SUMMARY_API}/orders/history`);
-        
-        if (response.data && Array.isArray(response.data)) {
-          // Count only today's orders
-          const today = new Date().toISOString().split('T')[0];
-          const todaysOrders = response.data.filter(order => {
-            const orderDate = new Date(order.created_at).toISOString().split('T')[0];
-            return orderDate === today;
-          });
-          
-          this.totalOrders = todaysOrders.length;
-          this.ordersChangePercent = '+0.0'; // Default since we don't have historical comparison
-          
-          console.log(`Today's orders loaded: ${this.totalOrders}`);
-        } else {
-          // Initialize to 0 if no data is available
-          this.totalOrders = 0;
-          this.ordersChangePercent = '+0.0';
-        }
+        this.totalOrders = response.data.length;
+        console.log(`Total orders: ${this.totalOrders}`);
+        this.ordersChangePercent = '+0.0'; // Default since we don't have historical comparison
       } catch (error) {
-        console.error('Error fetching orders:', error);
-        // Initialize to 0 instead of using dummy data
+        console.error("Error fetching total orders:", error);
         this.totalOrders = 0;
         this.ordersChangePercent = '+0.0';
       }
