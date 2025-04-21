@@ -397,18 +397,9 @@ export default {
             if (data.type === 'new_order') {
               // Handle new order notification
               if (data.order.customer_name === userName) {
-                console.log('Processing new order notification');
-                notificationAdded = this.addNewNotification({
-                  orderId: data.order.id,
-                  message: `Your order has been received! and is now being prepared. We will notify you as soon as it is ready for pickup. Estimated time 8-12 minutes.  Order details: ${this.formatItems(data.order.items)}. Total: ₱${this.calculateTotal(data.order.items)}`,
-                  timestamp: data.order.created_at,
-                  read: false
-                });
-                
-                // Show notification panel if it's not already open
-                if (!this.isPanelOpen && notificationAdded) {
-                  this.showNewNotificationAlert();
-                }
+                console.log('New order created, but notification is disabled');
+                // No notification will be created for new orders
+                // The notification that was here has been removed as requested
               }
             } else if (data.type === 'order_status_update') {
               // Handle order status update notification

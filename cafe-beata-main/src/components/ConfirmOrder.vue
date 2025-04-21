@@ -4,11 +4,16 @@
     <div v-if="showModal" class="custom-modal">
       <div class="modal-content">
         <span class="close" @click="closeModal">&times;</span>
-        <h2>📢 Hey, Wait!!</h2>
-        <p>Are you sure, that this is all you want to order?</p>
+        <div class="modal-icon">📢</div>
+        <h2 class="modal-title">Hey, Wait!</h2>
+        <p class="modal-message">Are you sure, that this is all you want to order?</p>
         <div class="modal-buttons">
-          <button @click="confirmOrder" class="yes-btn">Yes, I'm sure</button>
-          <button @click="stayOnPage" class="no-btn">No, I want to order more</button>
+          <button @click="stayOnPage" class="no-btn">
+            <i class="fas fa-plus-circle"></i> Add More Items
+          </button>
+          <button @click="confirmOrder" class="yes-btn">
+            <i class="fas fa-check-circle"></i> Confirm Order
+          </button>
         </div>
       </div>
     </div>
@@ -729,68 +734,162 @@ export default {
   font-size: 16px;
 }
 
-/* Modal Styles - Restored previous styling */
+/* Modal Styles */
 .custom-modal {
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: rgba(0, 0, 0, 0.6);
   display: flex;
   justify-content: center;
   align-items: center;
   z-index: 999;
+  backdrop-filter: blur(3px);
 }
 
 .modal-content {
-  background-color: #fce6e6;
-  padding: 30px;
-  border-radius: 10px;
+  background-color: white;
+  padding: 35px;
+  border-radius: 16px;
   text-align: center;
-  width: 80%;
-  max-width: 600px;
+  width: 90%;
+  max-width: 450px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+  position: relative;
+  animation: modalFadeIn 0.3s ease-out;
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.modal-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+
+.modal-title {
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 12px;
+  color: #333;
+}
+
+.modal-message {
+  font-size: 16px;
+  color: #666;
+  margin-bottom: 25px;
+  line-height: 1.5;
 }
 
 .close {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: 15px;
+  right: 15px;
   font-size: 24px;
-  color: #333;
+  color: #999;
   cursor: pointer;
+  transition: color 0.2s;
+  height: 30px;
+  width: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.close:hover {
+  color: #333;
+  background-color: #f1f1f1;
 }
 
 .modal-buttons {
   display: flex;
   justify-content: space-between;
-  margin-top: 20px;
+  gap: 15px;
 }
 
 .modal-buttons button {
-  padding: 10px 15px;
-  font-size: 14px;
+  flex: 1;
+  padding: 14px 20px;
+  font-size: 15px;
+  font-weight: 600;
   border: none;
-  border-radius: 5px;
+  border-radius: 8px;
   cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 .yes-btn {
-  background-color: rgb(136, 132, 136);
+  background-color: #4CAF50;
   color: white;
 }
 
 .no-btn {
-  background-color: rgb(255, 0, 128);
+  background-color: #E91E63;
   color: white;
 }
 
 .yes-btn:hover {
-  background-color: #ff9a29;
+  background-color: #45a049;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(76, 175, 80, 0.3);
 }
 
 .no-btn:hover {
-  background-color: #b82d67;
+  background-color: #d81b60;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(233, 30, 99, 0.3);
+}
+
+.yes-btn:active, .no-btn:active {
+  transform: translateY(1px);
+}
+
+/* Dark Mode Modal Styles */
+.dark-mode .modal-content {
+  background-color: #333;
+  color: white;
+}
+
+.dark-mode .modal-title {
+  color: white;
+}
+
+.dark-mode .modal-message {
+  color: #ccc;
+}
+
+.dark-mode .close {
+  color: #ccc;
+}
+
+.dark-mode .close:hover {
+  color: white;
+  background-color: #444;
+}
+
+.dark-mode .yes-btn {
+  background-color: #45a049;
+}
+
+.dark-mode .no-btn {
+  background-color: #d81b60;
+}
+
+.dark-mode .yes-btn:hover {
+  background-color: #3d8b3d;
+}
+
+.dark-mode .no-btn:hover {
+  background-color: #c1134e;
 }
 
 /* Processing Order Section */
@@ -967,15 +1066,6 @@ export default {
 }
 
 .dark-mode .empty-cart p {
-  color: #fff;
-}
-
-.dark-mode .modal-content {
-  background-color: #222;
-  color: #fff;
-}
-
-.dark-mode .close {
   color: #fff;
 }
 
