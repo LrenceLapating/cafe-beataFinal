@@ -39,6 +39,11 @@
           <span>Stock Management</span>
         </button>
 
+        <button @click="toggleChangePassword" class="utility-button">
+          <i class="fa fa-key"></i>
+          <span>Change Password</span>
+        </button>
+
         <button @click="logout" class="utility-button logout">
           <i class="fa fa-sign-out"></i>
           <span>Logout</span>
@@ -354,6 +359,55 @@
             </div>
           </div>
         </div>
+
+        <!-- Change Password Modal -->
+        <div v-if="showChangePasswordModal" class="password-modal">
+          <div class="password-modal-content">
+            <div class="password-modal-header">
+              <h2>Change Admin Password</h2>
+              <button @click="toggleChangePassword" class="close-modal-btn">
+                <i class="fa-solid fa-times"></i>
+              </button>
+            </div>
+            <div class="password-modal-body">
+              <form @submit.prevent="updatePassword" class="password-form">
+                <div class="form-group">
+                  <label for="currentPassword">Current Password</label>
+                  <input 
+                    type="password" 
+                    id="currentPassword" 
+                    v-model="passwordData.currentPassword" 
+                    required
+                  />
+                </div>
+                <div class="form-group">
+                  <label for="newPassword">New Password</label>
+                  <input 
+                    type="password" 
+                    id="newPassword" 
+                    v-model="passwordData.newPassword" 
+                    required
+                  />
+                </div>
+                <div class="form-group">
+                  <label for="confirmPassword">Confirm New Password</label>
+                  <input 
+                    type="password" 
+                    id="confirmPassword" 
+                    v-model="passwordData.confirmPassword" 
+                    required
+                  />
+                </div>
+                <div v-if="passwordMessage" :class="['password-message', passwordMessageType]">
+                  {{ passwordMessage }}
+                </div>
+                <div class="form-actions">
+                  <button type="submit" class="save-password-btn">Save New Password</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -401,6 +455,14 @@ export default {
       refreshInterval: null, // To store the interval ID for automatic refresh
       isUpdating: false, // New property for loading state
       pingInterval: null, // To store the interval ID for periodic ping
+      showChangePasswordModal: false,
+      passwordData: {
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+      },
+      passwordMessage: '',
+      passwordMessageType: ''
     };
   },
   computed: {
@@ -1892,6 +1954,64 @@ export default {
         this.fetchPendingOrders();
       }, 1000);
     },
+
+    toggleChangePassword() {
+      this.showChangePasswordModal = !this.showChangePasswordModal;
+      if (this.isSidebarOpen && window.innerWidth <= 768) {
+        this.toggleSidebar();
+      }
+    },
+
+    updatePassword() {
+      // Check if current password is correct
+      const currentAdminPassword = localStorage.getItem('adminPassword') || 'admin123';
+      
+      // Reset message
+      this.passwordMessage = '';
+      this.passwordMessageType = '';
+      
+      // Validate current password
+      if (this.passwordData.currentPassword !== currentAdminPassword) {
+        this.passwordMessage = 'Current password is incorrect';
+        this.passwordMessageType = 'error';
+        return;
+      }
+      
+      // Validate new password
+      if (this.passwordData.newPassword.length < 6) {
+        this.passwordMessage = 'New password must be at least 6 characters';
+        this.passwordMessageType = 'error';
+        return;
+      }
+      
+      // Validate password confirmation
+      if (this.passwordData.newPassword !== this.passwordData.confirmPassword) {
+        this.passwordMessage = 'New passwords do not match';
+        this.passwordMessageType = 'error';
+        return;
+      }
+      
+      // Update the password in localStorage
+      localStorage.setItem('adminPassword', this.passwordData.newPassword);
+      
+      // Show success message
+      this.passwordMessage = 'Password updated successfully!';
+      this.passwordMessageType = 'success';
+      
+      // Clear form after a delay
+      setTimeout(() => {
+        this.passwordData = {
+          currentPassword: '',
+          newPassword: '',
+          confirmPassword: ''
+        };
+        
+        // Close the modal after 2 seconds
+        setTimeout(() => {
+          this.toggleChangePassword();
+        }, 1000);
+      }, 1000);
+    }
   },
 
   mounted() {
@@ -3265,6 +3385,117 @@ button.decline-btn:hover {
   animation: successPulse 2s ease;
   border: 2px solid #4CAF50 !important;
   box-shadow: 0 4px 8px rgba(76, 175, 80, 0.3) !important;
+}
+
+/* Change Password Modal Styles */
+.password-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1003;
+  overflow-y: auto;
+}
+
+.password-modal-content {
+  background-color: white;
+  width: 90%;
+  max-width: 800px;
+  max-height: 90vh;
+  border-radius: 10px;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.password-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px;
+  background-color: #f8d2e4;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.password-modal-header h2 {
+  color: #d12f7a;
+  margin: 0;
+}
+
+.close-modal-btn {
+  background: none;
+  border: none;
+  color: #d12f7a;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 5px;
+}
+
+.close-modal-btn:hover {
+  color: #b82d67;
+}
+
+.password-modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  max-height: calc(90vh - 70px); /* Subtract header height */
+}
+
+.password-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.form-group label {
+  font-weight: bold;
+}
+
+.form-group input {
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+
+.save-password-btn {
+  background-color: #d12f7a;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.password-message {
+  color: #ff0000;
+  font-size: 14px;
+  margin-top: 5px;
+}
+
+.password-message.success {
+  color: #4CAF50;
+}
+
+.password-message.error {
+  color: #f44336;
 }
 
 </style>

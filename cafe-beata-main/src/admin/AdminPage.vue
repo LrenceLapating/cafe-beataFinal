@@ -39,7 +39,8 @@ export default {
   },
   methods: {
     handleAdminLogin() {
-      const adminPassword = "admin123"; // Replace this with a secure method to fetch the admin password
+      // Get the stored admin password or use the default if none exists
+      const adminPassword = localStorage.getItem('adminPassword') || 'admin123';
 
       if (this.adminPassword === adminPassword) {
         localStorage.setItem("loggedIn", "true");
