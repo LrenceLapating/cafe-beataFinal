@@ -410,6 +410,23 @@ async def upload_avatar(email: str, avatar: UploadFile = File(...)):
     # URL decode the email parameter if it contains encoded characters
     email = urllib.parse.unquote(email)
     
+    # Check if the file is an image
+    allowed_content_types = ["image/jpeg", "image/png", "image/gif", "image/webp", "image/jpg"]
+    if avatar.content_type not in allowed_content_types:
+        raise HTTPException(status_code=400, detail="Only image files (JPEG, PNG, GIF, WebP) are allowed")
+    
+    # Check file size (limit to 5MB)
+    MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB in bytes
+    file_size = 0
+    contents = await avatar.read()
+    file_size = len(contents)
+    
+    if file_size > MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="File size exceeds the 5MB limit")
+    
+    # Reset file cursor after reading
+    await avatar.seek(0)
+    
     # Sanitize email for filename by replacing @ and other special characters with underscores
     safe_email = email.replace("@", "_").replace(".", "_")
     

@@ -183,6 +183,22 @@ export default {
     uploadAvatar(event) {
   const file = event.target.files[0];
   if (file) {
+    // Check file type on client side first
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/jpg'];
+    if (!allowedTypes.includes(file.type)) {
+      alert("Only image files (JPEG, PNG, GIF, WebP) are allowed");
+      this.$refs.fileInput.value = ''; // Clear the file input
+      return;
+    }
+    
+    // Check file size (limit to 5MB)
+    const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB in bytes
+    if (file.size > MAX_FILE_SIZE) {
+      alert("File size exceeds the 5MB limit");
+      this.$refs.fileInput.value = ''; // Clear the file input
+      return;
+    }
+
     const formData = new FormData();
     formData.append("avatar", file);
 
@@ -190,21 +206,28 @@ export default {
       method: "POST",
       body: formData,
     })
-      .then((response) => response.json())
+      .then((response) => {
+        if (!response.ok) {
+          return response.json().then(data => {
+            throw new Error(data.detail || "Failed to upload avatar");
+          });
+        }
+        return response.json();
+      })
       .then((data) => {
         if (data.message === "Avatar uploaded successfully") {
           this.user.avatar = data.avatar_url || ""; // Removed default.png reference
           this.saveChanges();
-        } else {
-          alert(data.detail || "Failed to upload avatar.");
+          alert("Profile picture updated successfully");
         }
       })
       .catch((error) => {
         console.error("Error uploading avatar:", error);
-        alert("An error occurred while uploading the avatar.");
-          });
-      }
-    },
+        alert(error.message || "An error occurred while uploading the avatar.");
+        this.$refs.fileInput.value = ''; // Clear the file input
+      });
+    }
+  },
 
     triggerFileInput() {
       this.$refs.fileInput.click();
