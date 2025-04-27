@@ -703,6 +703,37 @@ async def get_raw_sales_data(
         logger.error(f"Error getting raw sales data: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
+@SalesRouter.delete("/clear-monthly-sales")
+async def clear_monthly_sales(
+    year: int = Query(..., description="Year to clear data for"),
+    month: int = Query(..., ge=1, le=12, description="Month to clear data for (1-12)"),
+    db = Depends(get_db)
+):
+    """
+    Permanently delete all sales records for a specific month and year.
+    WARNING: This action cannot be undone.
+    """
+    try:
+        cursor = db.cursor()
+        
+        # Delete sales records for the specified month and year
+        cursor.execute("""
+            DELETE FROM sales 
+            WHERE YEAR(created_at) = %s AND MONTH(created_at) = %s
+        """, (year, month))
+        
+        deleted_count = cursor.rowcount
+        db.commit()
+        cursor.close()
+        
+        logger.info(f"Deleted {deleted_count} sales records for {year}-{month}")
+        return {"message": f"Successfully deleted {deleted_count} sales records", "count": deleted_count}
+    
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error clearing sales data: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to clear sales data: {str(e)}")
+
 @SalesRouter.get("/top-products", response_model=List[Dict])
 async def get_top_products(
     month: Optional[int] = Query(None, description="Month (1-12)"),

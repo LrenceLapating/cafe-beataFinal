@@ -2389,3 +2389,39 @@ async def update_order_items(order_id: int, request: dict):
             cursor.close()
         if connection and connection.is_connected():
             connection.close()
+
+@app.delete("/orders/clear-monthly")
+async def clear_monthly_orders(year: int, month: int):
+    """
+    Permanently delete all orders for a specific month and year.
+    WARNING: This action cannot be undone.
+    """
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        
+        # Delete orders for the specified month and year
+        cursor.execute("""
+            DELETE FROM orderso 
+            WHERE YEAR(created_at) = %s AND MONTH(created_at) = %s
+        """, (year, month))
+        
+        deleted_count = cursor.rowcount
+        connection.commit()
+        cursor.close()
+        
+        # Log deletion
+        print(f"Deleted {deleted_count} orders for {year}-{month}")
+        
+        # Broadcast order update via WebSocket
+        await manager.broadcast({
+            "type": "order_update",
+            "action": "bulk_delete",
+            "message": f"Deleted {deleted_count} orders for {year}-{month}"
+        })
+        
+        return {"message": f"Successfully deleted {deleted_count} orders", "count": deleted_count}
+    
+    except Exception as e:
+        print(f"Error clearing order data: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to clear order data: {str(e)}")

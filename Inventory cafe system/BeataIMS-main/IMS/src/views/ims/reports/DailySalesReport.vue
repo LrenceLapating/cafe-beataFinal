@@ -24,6 +24,9 @@
           <button class="export-btn" @click="exportToCsv">
             <i class="pi pi-download"></i> Export CSV
           </button>
+          <button class="clear-data-btn" @click="showClearDataModal = true">
+            <i class="pi pi-trash"></i> Clear Month Data
+          </button>
         </div>
       </div>
 
@@ -254,6 +257,41 @@
           </div>
         </transition>
 
+        <!-- Clear Sales Data Confirmation Modal -->
+        <transition name="modal-fade">
+          <div class="modal" v-if="showClearDataModal">
+            <div class="modal-content clear-data-modal">
+              <div class="modal-header">
+                <h2>Clear Monthly Sales Data</h2>
+                <span class="close-btn" @click="showClearDataModal = false">&times;</span>
+              </div>
+              <div class="modal-body">
+                <div class="warning-box">
+                  <i class="pi pi-exclamation-triangle"></i>
+                  <p>Warning: This action will <strong>permanently delete</strong> all sales data for 
+                  {{ new Date(selectedDate).toLocaleString('default', { month: 'long' }) }} {{ new Date(selectedDate).getFullYear() }}.</p>
+                  <p>This action cannot be undone.</p>
+                </div>
+                <div class="confirmation-input">
+                  <label>Type "DELETE" to confirm:</label>
+                  <input type="text" v-model="deleteConfirmation" placeholder="DELETE" />
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button class="close-modal-btn" @click="showClearDataModal = false">Cancel</button>
+                <button 
+                  class="delete-btn" 
+                  :disabled="deleteConfirmation !== 'DELETE'" 
+                  @click="clearMonthlyData"
+                  :class="{ 'btn-disabled': deleteConfirmation !== 'DELETE' }"
+                >
+                  Clear All Data
+                </button>
+              </div>
+            </div>
+          </div>
+        </transition>
+
         <div v-if="cafeOrders.length === 0 && inventorySales.every(item => item.items_sold === 0)" class="no-data">
           <i class="pi pi-info-circle"></i>
           <p>No sales data available for {{ formattedDate }}.</p>
@@ -306,6 +344,8 @@ export default {
       // UI state
       showCafeOrdersModal: false,
       showInventorySalesModal: false,
+      showClearDataModal: false,
+      deleteConfirmation: '',
       
       // Timer references
       dateCheckInterval: null
@@ -421,75 +461,20 @@ export default {
       this.isSidebarCollapsed = collapsed;
     },
     
-    async fetchDailySalesData() {
-      // Get current date using consistent format
-      const systemNow = new Date();
-      const todayStr = systemNow.toLocaleDateString('en-CA'); // YYYY-MM-DD format
-      
-      console.log("FETCH - System date/time:", systemNow);
-      console.log("FETCH - Generated today string:", todayStr);
-      console.log("FETCH - Current stored date:", this.currentDate);
-      console.log("FETCH - Selected date:", this.selectedDate);
-      
-      // Ensure current date reference is up-to-date
-      if (this.currentDate !== todayStr) {
-        console.log("FETCH - Updating current date from", this.currentDate, "to", todayStr);
-        this.currentDate = todayStr;
-      }
-      
-      // Compare dates as strings in YYYY-MM-DD format to avoid time issues
-      const selectedDateObj = new Date(this.selectedDate);
-      const selectedDateStr = selectedDateObj.toLocaleDateString('en-CA');
-      const systemDateStr = systemNow.toLocaleDateString('en-CA');
-      
-      console.log("FETCH - Comparing dates:", selectedDateStr, "vs", systemDateStr);
-      
-      // Check if selected date is in the future (only comparing the date parts)
-      if (selectedDateStr > systemDateStr) {
-        console.log("FETCH - Future date detected");
-        this.toast.warning("Future dates are not allowed");
-        this.selectedDate = todayStr;
-        return; // Don't try to fetch with future date
-      }
-      
-      this.loading = true;
-      this.error = null;
-      
-      // Set a timeout to ensure loading state doesn't remain stuck
-      const loadingTimeout = setTimeout(() => {
-        if (this.loading) {
-          console.log("FETCH - Loading timeout reached, forcing loading state to false");
-          this.loading = false;
-          this.toast.error("Loading timed out. Please try refreshing again.");
-        }
-      }, 15000); // 15 seconds timeout
-      
-      try {
-        // Update the current time display
-        this.currentTime = this.formatCurrentTime();
-        
-        // Fetch data in parallel
-        await Promise.all([
-          this.fetchCafeOrdersData(),
-          this.fetchInventorySalesData()
-        ]);
-        
-        // Calculate summary data
-        this.calculateSummaryData();
-      } catch (error) {
-        console.error('Error fetching sales data:', error);
-        this.error = error.message || "Failed to load sales data";
-        this.toast.error(`Error: ${this.error}`);
-      } finally {
-        clearTimeout(loadingTimeout); // Clear the timeout
-        this.loading = false;
-      }
-    },
-    
     async fetchCafeOrdersData() {
       try {
-        // Fetch all completed orders from cafe-beata-main
-        const response = await axios.get(`http://127.0.0.1:8000/orders?status=completed`);
+        // Fetch all completed orders from cafe-beata-main with a shorter timeout
+        const response = await axios.get(`http://127.0.0.1:8000/orders?status=completed`, { 
+          timeout: 3000,  // Reduced timeout to 3 seconds
+          // Don't throw error for 404 or 500 status
+          validateStatus: function (status) {
+            return status < 600; // Accept any status code less than 600
+          }
+        });
+        
+        if (response.status !== 200) {
+          throw new Error(`Cafe system returned status code ${response.status}`);
+        }
         
         if (response.data && response.data.orders) {
           // Filter orders for selected date
@@ -512,8 +497,21 @@ export default {
         }
       } catch (error) {
         console.error('Error fetching cafe orders:', error);
-        this.toast.error('Error loading cafe orders');
+        
+        // Different message based on error type
+        if (error.code === 'ECONNABORTED') {
+          console.log("Connection timed out - Cafe system may not be running");
+          this.toast.info('Cafe system is offline. Showing inventory data only.');
+        } else if (error.code === 'ERR_NETWORK') {
+          console.log("Network error - Cafe system may not be running");
+          this.toast.info('Cafe system is offline. Showing inventory data only.');
+        } else {
+          this.toast.error('Unable to load cafe orders');
+        }
+        
+        // Always provide an empty array to prevent further errors
         this.cafeOrders = [];
+        // Continue execution - don't let cafe system connection issue break the whole report
       }
     },
     
@@ -899,6 +897,188 @@ export default {
       
       // Now fetch the data for the selected (and validated) date
       this.fetchDailySalesData();
+    },
+    clearMonthlyData() {
+      if (this.deleteConfirmation !== 'DELETE') {
+        return;
+      }
+      
+      const year = new Date(this.selectedDate).getFullYear();
+      const month = new Date(this.selectedDate).getMonth() + 1; // JavaScript months are 0-indexed
+      
+      // Show loading state
+      this.loading = true;
+      
+      // Create an array to track promises for both operations
+      const deletePromises = [];
+      const results = { inventory: null, cafe: null };
+      
+      // 1. Clear inventory system data
+      const inventoryPromise = fetch(`http://localhost:8001/api/sales/clear-monthly-sales?year=${year}&month=${month}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Failed to clear inventory sales data');
+        }
+        return response.json();
+      })
+      .then(data => {
+        results.inventory = data;
+        return data;
+      })
+      .catch(error => {
+        console.error('Error clearing inventory data:', error);
+        return { message: 'Error clearing inventory data', count: 0, error: true };
+      });
+      
+      deletePromises.push(inventoryPromise);
+      
+      // 2. Clear cafe system data
+      const cafePromise = fetch(`http://localhost:8000/orders/clear-monthly?year=${year}&month=${month}`, {
+        method: 'DELETE'
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Failed to clear cafe orders data');
+        }
+        return response.json();
+      })
+      .then(data => {
+        results.cafe = data;
+        return data;
+      })
+      .catch(error => {
+        console.error('Error clearing cafe data:', error);
+        results.cafe = { message: 'Error clearing cafe data', count: 0, error: true };
+        // Don't fail the entire operation if cafe endpoint fails
+        return results.cafe;
+      });
+      
+      deletePromises.push(cafePromise);
+      
+      // Wait for all operations to complete
+      Promise.all(deletePromises)
+        .then(() => {
+          // Build combined success message
+          let successMessage = '';
+          let hasErrors = false;
+          
+          if (results.inventory && !results.inventory.error) {
+            successMessage += results.inventory.message;
+          } else {
+            hasErrors = true;
+          }
+          
+          if (results.cafe && !results.cafe.error) {
+            if (successMessage) successMessage += ' and ';
+            successMessage += results.cafe.message;
+          } else {
+            hasErrors = true;
+          }
+          
+          if (hasErrors) {
+            successMessage += '. Note: Some data may not have been fully cleared.';
+          }
+          
+          // Show appropriate message
+          if (hasErrors) {
+            this.toast.warning(successMessage || 'Partial data clearance completed with some errors');
+          } else {
+            this.toast.success(successMessage || 'All data cleared successfully');
+          }
+          
+          // Reset the confirmation input and close the modal
+          this.deleteConfirmation = '';
+          this.showClearDataModal = false;
+          
+          // Refresh the data
+          this.refreshData();
+        })
+        .catch(error => {
+          console.error('Error clearing sales data:', error);
+          this.toast.error('Failed to clear sales data. Please try again.');
+        })
+        .finally(() => {
+          this.loading = false;
+        });
+    },
+    async fetchDailySalesData() {
+      // Get current date using consistent format
+      const systemNow = new Date();
+      const todayStr = systemNow.toLocaleDateString('en-CA'); // YYYY-MM-DD format
+      
+      console.log("FETCH - System date/time:", systemNow);
+      console.log("FETCH - Generated today string:", todayStr);
+      console.log("FETCH - Current stored date:", this.currentDate);
+      console.log("FETCH - Selected date:", this.selectedDate);
+      
+      // Ensure current date reference is up-to-date
+      if (this.currentDate !== todayStr) {
+        console.log("FETCH - Updating current date from", this.currentDate, "to", todayStr);
+        this.currentDate = todayStr;
+      }
+      
+      // Compare dates as strings in YYYY-MM-DD format to avoid time issues
+      const selectedDateObj = new Date(this.selectedDate);
+      const selectedDateStr = selectedDateObj.toLocaleDateString('en-CA');
+      const systemDateStr = systemNow.toLocaleDateString('en-CA');
+      
+      console.log("FETCH - Comparing dates:", selectedDateStr, "vs", systemDateStr);
+      
+      // Check if selected date is in the future (only comparing the date parts)
+      if (selectedDateStr > systemDateStr) {
+        console.log("FETCH - Future date detected");
+        this.toast.warning("Future dates are not allowed");
+        this.selectedDate = todayStr;
+        return; // Don't try to fetch with future date
+      }
+      
+      this.loading = true;
+      this.error = null;
+      
+      // Set a timeout to ensure loading state doesn't remain stuck
+      const loadingTimeout = setTimeout(() => {
+        if (this.loading) {
+          console.log("FETCH - Loading timeout reached, forcing loading state to false");
+          this.loading = false;
+          this.toast.error("Loading timed out. Please try refreshing again.");
+        }
+      }, 15000); // 15 seconds timeout
+      
+      try {
+        // Update the current time display
+        this.currentTime = this.formatCurrentTime();
+        
+        // Fetch data in parallel but don't let one failure stop the other
+        const fetchPromises = [
+          this.fetchInventorySalesData()
+        ];
+        
+        // Add cafe orders fetch as a separate try-catch to prevent it from blocking inventory data
+        try {
+          await this.fetchCafeOrdersData();
+        } catch (cafeError) {
+          console.error("Error fetching cafe data but continuing:", cafeError);
+          this.cafeOrders = []; // Ensure we have an empty array
+        }
+        
+        // Wait for inventory data
+        await Promise.all(fetchPromises);
+        
+        // Calculate summary data
+        this.calculateSummaryData();
+      } catch (error) {
+        console.error('Error fetching sales data:', error);
+        this.error = error.message || "Failed to load sales data";
+        this.toast.error(`Error: ${this.error}`);
+      } finally {
+        clearTimeout(loadingTimeout); // Clear the timeout
+        this.loading = false;
+      }
     },
   },
   mounted() {
@@ -1658,5 +1838,82 @@ export default {
   padding: 2px 5px;
   border-radius: 3px;
   background-color: rgba(229, 79, 112, 0.1);
+}
+
+.clear-data-btn {
+  background-color: #f44336;
+  color: white;
+  border: none;
+  padding: 8px 15px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+  margin-left: 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.clear-data-btn:hover {
+  background-color: #d32f2f;
+}
+
+.clear-data-modal {
+  max-width: 500px;
+}
+
+.warning-box {
+  background-color: #fff3f3;
+  border: 1px solid #ffcdd2;
+  border-radius: 4px;
+  padding: 15px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.warning-box i {
+  color: #f44336;
+  font-size: 2.5rem;
+  margin-bottom: 10px;
+}
+
+.confirmation-input {
+  margin-top: 20px;
+}
+
+.confirmation-input label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 600;
+}
+
+.confirmation-input input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 1rem;
+}
+
+.delete-btn {
+  background-color: #f44336;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.delete-btn:hover:not(.btn-disabled) {
+  background-color: #d32f2f;
+}
+
+.btn-disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
 }
 </style> 
