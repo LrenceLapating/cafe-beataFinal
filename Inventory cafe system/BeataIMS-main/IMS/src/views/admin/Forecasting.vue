@@ -41,7 +41,7 @@
       <!-- Top Products Bar Chart -->
       <div class="top-products-section">
         <div class="top-products-card card">
-          <h3>Top 5 Products for {{ currentMonthName }}</h3>
+          <h3>Top 10 Products for {{ currentMonthName }}</h3>
           <div v-if="isLoading" class="loading-container">
             <div class="loading-spinner"></div>
             <p>Loading product data...</p>

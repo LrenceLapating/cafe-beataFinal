@@ -9,7 +9,7 @@
       <div class="logo-container">
         <img src="@/assets/uic-logo.png" alt="University Logo" class="logo" />
       </div>
-      <h1 class="title">Admin Login</h1>
+      <h1 class="title">Cafe Staff Login</h1>
       <form @submit.prevent="handleAdminLogin" class="login-form">
         <div class="input-container">
           <label for="admin-password"></label>

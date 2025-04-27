@@ -17,7 +17,7 @@
       
       <!-- Admin Profile Section -->
       <div class="user-profile-section">
-        <h3><i class="fa fa-user-circle"></i> Admin Dashboard</h3>
+        <h3><i class="fa fa-user-circle"></i>Cafe Staff Dashboard</h3>
       </div>
 
       <hr class="utility-divider">
@@ -71,7 +71,7 @@
             </div>
           </button>
           <div class="logo-container">
-            <div class="cafe-title">Cafe Preorder Admin Dashboard</div>
+            <div class="cafe-title">Cafe Preorder Cafe Staff Dashboard</div>
           </div>
         </div>
       </div>
